@@ -1,0 +1,11 @@
+Flask>=2.3
+Werkzeug>=2.3
+numpy
+pillow
+matplotlib
+seaborn
+pandas
+opencv-python
+scikit-image
+nbconvert
+nbformat
