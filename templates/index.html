@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="row align-items-center mb-4">
+  <div class="col-lg-7">
+    <div class="p-4 p-md-5 rounded-4" style="background: #ffffff; border: 2px solid #e6f4ea; box-shadow: 0 10px 24px rgba(37,61,44,.10);">
+      <h1 class="fw-bold" style="color: var(--primary); font-family: 'Fredoka', 'Nunito', sans-serif;">Hide Messages in Plain Sight</h1>
+      <p class="lead" style="color: var(--muted);">
+        StegoLab lets you securely hide secret messages inside images using multiple steganographic techniques.
+        Create a stego image and share it—your recipient can upload it here to reveal the hidden message. Keep
+        sensitive information private and protected.
+      </p>
+      <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-primary" href="{{ url_for('manual') }}">Encode/Decode</a>
+        <a class="btn btn-outline-secondary" href="{{ url_for('auto_mode') }}">Compare Methods</a>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-5 mt-3 mt-lg-0">
+    <div class="card">
+      <div class="card-header">What this app does</div>
+      <div class="card-body">
+        <ul class="mb-0">
+          <li><strong>Encode</strong> a text message into an image (stego image).</li>
+          <li><strong>Decode</strong> a received stego image to reveal the secret text.</li>
+          <li><strong>Compare</strong> multiple methods (LSB, Palette, DCT, XOR) with visual metrics.</li>
+          <li><strong>Privacy-first</strong>: data stays local to your browser/server session.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

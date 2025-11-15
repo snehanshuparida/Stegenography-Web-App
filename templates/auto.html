@@ -1,0 +1,253 @@
+{% extends 'base.html' %}
+{% block content %}
+<h3 class="mb-3">Auto Compare</h3>
+<form method="post" enctype="multipart/form-data" class="mb-4">
+  <div class="row g-3">
+    <div class="col-md-6">
+      <label class="form-label">Upload Image</label>
+      <input class="form-control" type="file" name="image" accept="image/*" required>
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Secret Message</label>
+      <input class="form-control" type="text" name="message" placeholder="Type your secret message" required>
+    </div>
+    <div class="col-12">
+      <button class="btn btn-primary" type="submit">Run Comparison</button>
+    </div>
+  </div>
+</form>
+
+{% if input_image_url %}
+<div class="row g-3">
+  <div class="col-md-4">
+    <div class="card">
+      <div class="card-header">Input Image</div>
+      <img class="card-img-top" src="{{ input_image_url }}" alt="input">
+      <div class="card-body">
+        <p class="mb-0"><strong>Message:</strong> {{ message }}</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-8">
+    <div class="card">
+      <div class="card-header">Results</div>
+      <div class="table-responsive">
+        <table class="table table-striped align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Method</th>
+              <th>Stego</th>
+              <th>Encode Time (s)</th>
+              <th>Decode Time (s)</th>
+              <th>SSIM</th>
+              <th>PSNR</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in results %}
+            <tr>
+              <td>{{ r.method }}</td>
+              <td>
+                {% if r.error %}
+                  <span class="text-danger">{{ r.error }}</span>
+                {% else %}
+                  <img src="{{ r.encoded_url }}" alt="stego" style="max-height:70px;" class="border">
+                {% endif %}
+              </td>
+              <td>{{ r.encode_time or '-' }}</td>
+              <td>{{ r.decode_time or '-' }}</td>
+              <td>{{ r.ssim is not none and r.ssim or '-' }}</td>
+              <td>{{ r.psnr is not none and r.psnr or '-' }}</td>
+              <td>
+                {% if r.download_url %}
+                <a class="btn btn-sm btn-outline-secondary" href="{{ r.download_url }}">Download</a>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mt-2">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">Overall Comparison (Radar)</div>
+      <div id="plot-radar" style="height:540px;"></div>
+    </div>
+  </div>
+  </div>
+
+<div class="row g-3 mt-2">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">SSIM & PSNR (Interactive)</div>
+      <div class="px-3 pt-2 text-muted small">Higher SSIM and higher PSNR indicate better quality.</div>
+      <div id="plot-metrics" style="height:360px;"></div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">Encoding/Decoding Time (Interactive)</div>
+      <div id="plot-times" style="height:360px;"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Server-provided results (array of objects)
+  window.RESULTS_DATA = {{ results|tojson|safe }};
+</script>
+<script>
+  document.addEventListener('DOMContentLoaded', function(){
+    var results = Array.isArray(window.RESULTS_DATA) ? window.RESULTS_DATA : [];
+    try { console.debug('AutoCompare results sample:', results && results[0]); } catch(e) {}
+
+    if (!window.Plotly) {
+      console.warn('Plotly not loaded');
+      return;
+    }
+
+    if (!results || !results.length) return;
+
+    var methods = results.map(function(r){ return r.method; });
+    var ssim = results.map(function(r){ return (r.ssim === undefined || r.ssim === null) ? null : Number(r.ssim); });
+    // Preserve raw PSNR (may contain Infinity) and build a plotted version that caps Infinity to finite max
+    var psnrRaw = results.map(function(r){ return (r.psnr === undefined || r.psnr === null) ? null : Number(r.psnr); });
+    var enc  = results.map(function(r){ return (r.encode_time === undefined || r.encode_time === null) ? null : Number(r.encode_time); });
+    var dec  = results.map(function(r){ return (r.decode_time === undefined || r.decode_time === null) ? null : Number(r.decode_time); });
+
+    // Compute finite max for PSNR to keep axis consistent
+    var finitePsnr = psnrRaw.filter(function(v){ return v !== null && isFinite(v); });
+    var psnrMaxFinite = finitePsnr.length ? Math.max.apply(Math, finitePsnr) : 1;
+    var psnrPlot = psnrRaw.map(function(v){ return (v === null) ? null : (isFinite(v) ? v : psnrMaxFinite); });
+    // Hover label for PSNR: show ∞ for non-finite values
+    var psnrHover = psnrRaw.map(function(v){
+      if (v === null) return '-';
+      return isFinite(v) ? (Number(v).toFixed(2) + ' dB') : '∞';
+    });
+
+    // SSIM & PSNR animated grouped bar
+    const metricsData = [
+      { x: methods, y: ssim, type: 'bar', name: 'SSIM', marker: { color: '#4f46e5' } },
+      { x: methods, y: psnrPlot, type: 'bar', name: 'PSNR', marker: { color: '#06b6d4' }, customdata: psnrHover, hovertemplate: 'PSNR: %{customdata}<extra></extra>' },
+    ];
+    const layout1 = {
+      barmode: 'group',
+      margin: { t: 40, r: 20, b: 60, l: 50 },
+      paper_bgcolor: 'rgba(0,0,0,0)',
+      plot_bgcolor: 'rgba(0,0,0,0)',
+      title: { text: 'SSIM & PSNR', font: { family: 'Fredoka, Nunito', size: 18 } },
+      xaxis: { tickangle: 0 },
+      yaxis: { gridcolor: '#e5e7eb' },
+      transition: { duration: 400, easing: 'cubic-in-out' },
+    };
+    Plotly.newPlot('plot-metrics', metricsData, layout1, {displayModeBar:false});
+    try { Plotly.animate('plot-metrics', { data: metricsData, traces: [0,1], layout: {transition: {duration: 600, easing: 'cubic-in-out'}} }); } catch(e) {}
+
+    // Encoding/Decoding time animated lines
+    const timesData = [
+      { x: methods, y: enc, type: 'scatter', mode: 'lines+markers', name: 'Encode', line: { color: '#4f46e5', shape: 'spline' }, marker: { size: 8 } },
+      { x: methods, y: dec, type: 'scatter', mode: 'lines+markers', name: 'Decode', line: { color: '#06b6d4', shape: 'spline' }, marker: { size: 8 } },
+    ];
+    const layout2 = {
+      margin: { t: 40, r: 20, b: 60, l: 50 },
+      paper_bgcolor: 'rgba(0,0,0,0)',
+      plot_bgcolor: 'rgba(0,0,0,0)',
+      title: { text: 'Encoding vs Decoding Time', font: { family: 'Fredoka, Nunito', size: 18 } },
+      xaxis: { tickangle: 0 },
+      yaxis: { gridcolor: '#e5e7eb', title: 'Seconds' },
+      transition: { duration: 400, easing: 'cubic-in-out' },
+    };
+    Plotly.newPlot('plot-times', timesData, layout2, {displayModeBar:false});
+    try { Plotly.animate('plot-times', { data: timesData, traces: [0,1], layout: {transition: {duration: 600, easing: 'cubic-in-out'}} }); } catch(e) {}
+
+    // Radar: normalize metrics to [0,1], invert time metrics so higher is better; one trace per method
+    var safe = function(arr){ return arr.map(function(v){ return (v===null||isNaN(v))?null:Number(v); }); };
+    var ssimS = safe(ssim);
+    // For radar, treat Infinity as max finite value for normalization
+    var psnr = psnrPlot; // use finite-capped values downstream
+    var psnrS = safe(psnr);
+    var encS = safe(enc);
+    var decS = safe(dec);
+    var minmax = function(arr){
+      var vals = arr.filter(function(v){ return v!=null; });
+      if(!vals.length) return [0,1];
+      return [Math.min.apply(Math, vals), Math.max.apply(Math, vals)];
+    };
+    var mm1 = minmax(ssimS), ssmin = mm1[0], ssmax = mm1[1];
+    var mm2 = minmax(psnrS), psmin = mm2[0], psmax = mm2[1];
+    var mm3 = minmax(encS),  enmin = mm3[0], enmax = mm3[1];
+    var mm4 = minmax(decS),  demin = mm4[0], demax = mm4[1];
+    var norm = function(v, mn, mx, invert){
+      if(v==null || isNaN(v) || mx===mn) return 0;
+      var t = (v - mn) / (mx - mn);
+      return invert ? 1 - t : t;
+    };
+    var axes = ['SSIM','PSNR','Encode Time','Decode Time'];
+    // Indigo/Cyan palette
+    var palette = ['#4f46e5','#06b6d4','#0ea5e9','#3730a3'];
+
+    var traces = methods.map(function(m, i){
+      var vals = [
+        norm(ssimS[i], ssmin, ssmax, false),
+        norm(psnrS[i], psmin, psmax, false),
+        norm(encS[i], enmin, enmax, true),
+        norm(decS[i], demin, demax, true)
+      ];
+      var hover = [
+        'SSIM: ' + (ssimS[i]==null?'-':ssimS[i].toFixed(3)),
+        'PSNR: ' + (psnrS[i]==null?'-':psnrS[i].toFixed(2) + ' dB'),
+        'Encode: ' + (encS[i]==null?'-':encS[i].toFixed(3) + ' s'),
+        'Decode: ' + (decS[i]==null?'-':decS[i].toFixed(3) + ' s')
+      ].join('<br>');
+      return {
+        type: 'scatterpolar',
+        r: vals,
+        theta: axes,
+        name: m,
+        fill: 'toself',
+        opacity: 0.25,
+        line: { color: palette[i % palette.length], width: 2 },
+        hovertemplate: m + '<br>%{theta}<br>%{r:.2f}<br>' + hover + '<extra></extra>'
+      };
+    });
+
+    // Default view: show all; add buttons to focus one method (no overlap)
+    var buttons = [{
+      label: 'All',
+      method: 'update',
+      args: [ { visible: traces.map(function(){return true;}) }, { title: 'All Methods' } ]
+    }];
+    methods.forEach(function(m, idx){
+      var vis = traces.map(function(_, i){ return i===idx; });
+      buttons.push({ label: m, method: 'update', args: [ { visible: vis }, { title: m } ] });
+    });
+
+    var layout3 = {
+      margin: { t: 60, r: 30, b: 30, l: 30 },
+      paper_bgcolor: 'rgba(0,0,0,0)',
+      polar: {
+        radialaxis: { visible: true, range: [0,1], tick0: 0, dtick: 0.25, gridcolor: '#e5e7eb' },
+        angularaxis: { direction: 'clockwise' }
+      },
+      legend: { orientation: 'h', y: -0.2 },
+      title: { text: 'Radar Comparison (select a method to focus)', font: { family: 'Fredoka, Nunito', size: 18 } },
+      updatemenus: [{
+        type: 'buttons',
+        x: 1.05, xanchor: 'right', y: 0.5, yanchor: 'middle',
+        direction: 'down',
+        showactive: true,
+        pad: {l: 8, r: 8, t: 8, b: 8},
+        buttons: buttons
+      }]
+    };
+    Plotly.newPlot('plot-radar', traces, layout3, {displayModeBar:false});
+  });
+</script>
+{% endif %}
+{% endblock %}

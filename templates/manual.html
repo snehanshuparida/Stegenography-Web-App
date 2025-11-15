@@ -1,0 +1,76 @@
+{% extends 'base.html' %}
+{% block content %}
+<h3>Manual Mode</h3>
+<form method="post" enctype="multipart/form-data" class="mb-4">
+  <div class="row g-3">
+    <div class="col-md-6">
+      <label class="form-label">Upload Image</label>
+      <input class="form-control" type="file" name="image" accept="image/*" required>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">Mode</label>
+      <select class="form-select" name="mode" required>
+        <option value="encode" {% if mode=='encode' %}selected{% endif %}>Encode</option>
+        <option value="decode" {% if mode=='decode' %}selected{% endif %}>Decode</option>
+      </select>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">Method</label>
+      <select class="form-select" name="method" required>
+        {% for m in methods %}
+          <option value="{{ m }}" {% if method==m %}selected{% endif %}>{{ m }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-12" id="messageRow" {% if mode=='decode' %}style="display:none"{% endif %}>
+      <label class="form-label">Secret Message (for Encode)</label>
+      <input class="form-control" type="text" name="message" value="{{ message or '' }}" placeholder="Type your secret message">
+    </div>
+    <div class="col-md-6" id="outnameRow" {% if mode=='decode' %}style="display:none"{% endif %}>
+      <label class="form-label">Output Name (without extension)</label>
+      <input class="form-control" type="text" name="outname" value="">
+    </div>
+    <div class="col-12">
+      <button class="btn btn-primary" type="submit">Run</button>
+    </div>
+  </div>
+</form>
+
+{% if input_image_url %}
+<div class="row g-3">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">Input Image</div>
+      <img class="card-img-top" src="{{ input_image_url }}" alt="input">
+    </div>
+  </div>
+
+  {% if mode=='encode' %}
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">Output (Stego) Image</div>
+      <img class="card-img-top" src="{{ output_image_url }}" alt="output">
+      <div class="card-body">
+        <p class="mb-1"><strong>Encode Time:</strong> {{ encode_time }} s</p>
+        {% if ssim is not none and psnr is not none %}
+        <p class="mb-1"><strong>SSIM:</strong> {{ ssim }}</p>
+        <p class="mb-1"><strong>PSNR:</strong> {{ psnr }} dB</p>
+        {% endif %}
+        <a class="btn btn-outline-secondary btn-sm" href="{{ download_url }}">Download</a>
+      </div>
+    </div>
+  </div>
+  {% elif mode=='decode' %}
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">Decoded Message</div>
+      <div class="card-body">
+        <pre class="mb-2">{{ decoded_message }}</pre>
+        <p class="mb-0"><strong>Decode Time:</strong> {{ decode_time }} s</p>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}
